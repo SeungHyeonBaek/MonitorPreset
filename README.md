@@ -3,3 +3,5 @@
 Display Settings의 빠른 전환
 
 HOTKEY설정 가능.
+
+편리함.

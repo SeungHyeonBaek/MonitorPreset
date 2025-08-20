@@ -1,0 +1,74 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     >
+  <Package Name="MonitorPresetManager" Manufacturer="bsh" Version="1.1.0" UpgradeCode="C6B6A8E2-9C1E-4A4B-8C8A-7E7B6F9A5B5D">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." AllowSameVersionUpgrades="yes" />
+
+    <Feature Id="Main">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+      <ComponentRef Id="StartupRegistry" />
+    </Feature>
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="MonitorPresetManager" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component>
+        <File Id="MonitorPresetManager.exe" Source="bin\Release\net8.0-windows\MonitorPresetManager.exe" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Source="bin\Release\net8.0-windows\MonitorPresetManager.dll" />
+      </Component>
+      <Component>
+        <File Source="bin\Release\net8.0-windows\MonitorPresetManager.runtimeconfig.json" />
+      </Component>
+      <Component>
+        <File Source="bin\Release\net8.0-windows\MonitorPresetManager.deps.json" />
+      </Component>
+      <Component>
+        <File Source="bin\Release\net8.0-windows\Newtonsoft.Json.dll" />
+      </Component>
+    </ComponentGroup>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="MonitorPresetManager"/>
+    </StandardDirectory>
+
+    <DirectoryRef Id="ApplicationProgramsFolder">
+        <Component Id="ApplicationShortcut" Guid="*">
+            <Shortcut Id="ApplicationStartMenuShortcut"
+                      Name="MonitorPresetManager"
+                      Description="Monitor Preset Manager - Manage multiple monitor configurations"
+                      Target="[#MonitorPresetManager.exe]"
+                      WorkingDirectory="INSTALLFOLDER"/>
+            <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
+            <RegistryValue Root="HKCU" Key="Software\MonitorPresetManager" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
+        </Component>
+    </DirectoryRef>
+
+    <!-- Desktop Shortcut Component -->
+    <StandardDirectory Id="DesktopFolder">
+        <Component Id="DesktopShortcut" Guid="*">
+            <Shortcut Id="DesktopShortcut"
+                      Name="MonitorPresetManager"
+                      Description="Monitor Preset Manager - Manage multiple monitor configurations"
+                      Target="[#MonitorPresetManager.exe]"
+                      WorkingDirectory="INSTALLFOLDER"/>
+            <RegistryValue Root="HKCU" Key="Software\MonitorPresetManager" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes"/>
+        </Component>
+    </StandardDirectory>
+
+    <!-- Startup Registry Component -->
+    <Component Id="StartupRegistry" Directory="INSTALLFOLDER" Guid="*">
+        <RegistryValue Root="HKCU"
+                      Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                      Name="MonitorPresetManager"
+                      Type="string"
+                      Value="&quot;[INSTALLFOLDER]MonitorPresetManager.exe&quot; --minimized"
+                      KeyPath="yes"/>
+    </Component>
+
+  </Package>
+</Wix>

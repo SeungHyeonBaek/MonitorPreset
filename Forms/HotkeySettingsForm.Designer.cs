@@ -289,7 +289,7 @@ namespace MonitorPresetManager.Forms
             // 
             // buttonOK
             // 
-            this.buttonOK.Location = new Point(430, 15);
+            this.buttonOK.Location = new Point(400, 15);
             this.buttonOK.Name = "buttonOK";
             this.buttonOK.Size = new Size(75, 23);
             this.buttonOK.TabIndex = 0;
@@ -298,7 +298,7 @@ namespace MonitorPresetManager.Forms
             // 
             // buttonCancel
             // 
-            this.buttonCancel.Location = new Point(515, 15);
+            this.buttonCancel.Location = new Point(485, 15);
             this.buttonCancel.Name = "buttonCancel";
             this.buttonCancel.Size = new Size(75, 23);
             this.buttonCancel.TabIndex = 1;

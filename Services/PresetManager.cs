@@ -347,6 +347,63 @@ namespace MonitorPresetManager.Services
         }
 
         /// <summary>
+        /// Export all presets into a single JSON file for backup/transfer.
+        /// </summary>
+        /// <param name="filePath">Destination JSON file path</param>
+        /// <returns>Number of exported presets</returns>
+        public async Task<int> ExportAllPresetsAsync(string filePath)
+        {
+            var presets = await GetAllPresetsAsync();
+            await _fileStorage.SaveAsync(filePath, presets);
+            return presets.Count;
+        }
+
+        /// <summary>
+        /// Import presets from a JSON file (array of DisplayPreset) and save them locally.
+        /// </summary>
+        /// <param name="filePath">Source JSON file path</param>
+        /// <param name="overwrite">Whether to overwrite existing presets with the same name</param>
+        /// <returns>Tuple of imported count, skipped count, and error messages</returns>
+        public async Task<(int imported, int skipped, List<string> errors)> ImportPresetsAsync(string filePath, bool overwrite = false)
+        {
+            var errors = new List<string>();
+            var imported = 0;
+            var skipped = 0;
+
+            var list = await _fileStorage.LoadAsync<List<DisplayPreset>>(filePath);
+            if (list == null || list.Count == 0)
+            {
+                return (0, 0, new List<string> { "가져올 프리셋이 없습니다." });
+            }
+
+            foreach (var preset in list)
+            {
+                try
+                {
+                    if (preset == null || string.IsNullOrWhiteSpace(preset.Name) || !IsValidPresetName(preset.Name))
+                    {
+                        skipped++;
+                        continue;
+                    }
+
+                    // 보존되지 않은 메타를 보정
+                    if (preset.CreatedDate == default) preset.CreatedDate = DateTime.Now;
+                    preset.ModifiedDate = DateTime.Now;
+
+                    await SavePresetAsync(preset, overwrite);
+                    imported++;
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"{preset?.Name ?? "(null)"}: {ex.Message}");
+                    skipped++;
+                }
+            }
+
+            return (imported, skipped, errors);
+        }
+
+        /// <summary>
         /// Validate preset data before saving
         /// </summary>
         /// <param name="preset">Preset to validate</param>

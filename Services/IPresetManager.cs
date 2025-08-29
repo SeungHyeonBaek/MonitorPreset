@@ -78,5 +78,15 @@ namespace MonitorPresetManager.Services
         /// <param name="key">Hotkey key</param>
         /// <returns>The preset with the matching hotkey, or null if not found</returns>
         Task<DisplayPreset?> GetPresetByHotkeyAsync(HotkeyModifiers modifiers, Keys key);
+
+    /// <summary>
+    /// Export all presets into a single JSON file
+    /// </summary>
+    Task<int> ExportAllPresetsAsync(string filePath);
+
+    /// <summary>
+    /// Import presets from a JSON file
+    /// </summary>
+    Task<(int imported, int skipped, List<string> errors)> ImportPresetsAsync(string filePath, bool overwrite = false);
     }
 }

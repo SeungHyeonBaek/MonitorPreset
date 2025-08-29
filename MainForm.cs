@@ -19,6 +19,8 @@ namespace MonitorPresetManager
         private readonly ILogger _logger;
         private HotkeyMessageWindow? _hotkeyMessageWindow;
         private Dictionary<string, int> _registeredPresetHotkeyIds; // Stores hotkey IDs for registered presets
+        private Services.ActivationMessageWindow? _activationWindow; // Hidden window to receive activation
+        private readonly bool _startMinimized;
         
         // UI Controls
         private ListView listViewPresets = null!;
@@ -28,7 +30,7 @@ namespace MonitorPresetManager
         private Button buttonDeletePreset = null!;
         private Label labelDetailsInfo = null!;
 
-        public MainForm()
+        public MainForm(bool startMinimized = false)
         {
             // Initialize services (HotkeyManager will be initialized after handle creation)
             _logger = new FileLogger();
@@ -37,9 +39,30 @@ namespace MonitorPresetManager
             _hotkeyManager = null!; // Will be initialized in Load event
             _trayManager = new TrayManager();
             _registeredPresetHotkeyIds = new Dictionary<string, int>();
+            _startMinimized = startMinimized;
             
             InitializeComponent();
             InitializeForm();
+
+            // Create activation receiver window (hidden top-level window)
+            _activationWindow = new Services.ActivationMessageWindow(() =>
+            {
+                try
+                {
+                    RestoreFromTray();
+                }
+                catch { /* best-effort */ }
+            });
+
+            // If requested, start minimized to tray after first show
+            this.Shown += (s, e) =>
+            {
+                if (_startMinimized)
+                {
+                    this.WindowState = FormWindowState.Minimized;
+                    MinimizeToTray();
+                }
+            };
         }
         
         private void InitializeComponent()
@@ -48,10 +71,10 @@ namespace MonitorPresetManager
             
             // Form properties
             this.Text = "Monitor Preset Manager";
-            this.Size = new Size(1024, 550);
+            this.Size = new Size(1024, 565);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.Sizable;
-            this.MinimumSize = new Size(800, 450);
+            this.MinimumSize = new Size(800, 465);
             
             // Create menu strip
             var menuStrip = new MenuStrip();
@@ -60,8 +83,15 @@ namespace MonitorPresetManager
             var helpMenu = new ToolStripMenuItem("Help");
             
             // File menu items
+            var exportMenuItem = new ToolStripMenuItem("Export Presets");
+            exportMenuItem.Click += async (s, e) => await ExportPresetsAsync();
+            var importMenuItem = new ToolStripMenuItem("Import Presets");
+            importMenuItem.Click += async (s, e) => await ImportPresetsAsync();
             var exitMenuItem = new ToolStripMenuItem("Exit");
             exitMenuItem.Click += (s, e) => Application.Exit();
+            fileMenu.DropDownItems.Add(exportMenuItem);
+            fileMenu.DropDownItems.Add(importMenuItem);
+            fileMenu.DropDownItems.Add(new ToolStripSeparator());
             fileMenu.DropDownItems.Add(exitMenuItem);
             
             // Settings menu items
@@ -139,14 +169,14 @@ namespace MonitorPresetManager
             buttonSavePreset = new Button()
             {
                 Text = "Save Current",
-                Location = new Point(20, 480),
+                Location = new Point(20, 470),
                 Size = new Size(100, 35)
             };
             
             buttonApplyPreset = new Button()
             {
                 Text = "Apply Selected",
-                Location = new Point(130, 480),
+                Location = new Point(130, 470),
                 Size = new Size(100, 35),
                 Enabled = false
             };
@@ -154,7 +184,7 @@ namespace MonitorPresetManager
             buttonRenamePreset = new Button()
             {
                 Text = "Rename",
-                Location = new Point(240, 480),
+                Location = new Point(240, 470),
                 Size = new Size(80, 35),
                 Enabled = false
             };
@@ -162,7 +192,7 @@ namespace MonitorPresetManager
             buttonDeletePreset = new Button()
             {
                 Text = "Delete",
-                Location = new Point(330, 480),
+                Location = new Point(330, 470),
                 Size = new Size(80, 35),
                 Enabled = false
             };
@@ -180,6 +210,61 @@ namespace MonitorPresetManager
             
             this.MainMenuStrip = menuStrip;
             this.ResumeLayout(false);
+        }
+
+        private async Task ExportPresetsAsync()
+        {
+            try
+            {
+                using var sfd = new SaveFileDialog
+                {
+                    Title = "Export Presets",
+                    Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                    FileName = $"MonitorPresets_{DateTime.Now:yyyyMMdd}.json",
+                    AddExtension = true,
+                    OverwritePrompt = true
+                };
+                if (sfd.ShowDialog(this) != DialogResult.OK) return;
+
+                var count = await _presetManager.ExportAllPresetsAsync(sfd.FileName);
+                MessageBox.Show(this, $"프리셋 {count}개를 내보냈습니다.", "Export", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"내보내기 실패: {ex.Message}", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async Task ImportPresetsAsync()
+        {
+            try
+            {
+                using var ofd = new OpenFileDialog
+                {
+                    Title = "Import Presets",
+                    Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                    CheckFileExists = true,
+                    Multiselect = false
+                };
+                if (ofd.ShowDialog(this) != DialogResult.OK) return;
+
+                var overwrite = MessageBox.Show(this, "같은 이름의 프리셋이 있을 경우 덮어쓸까요?", "Import",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+
+                var (imported, skipped, errors) = await _presetManager.ImportPresetsAsync(ofd.FileName, overwrite);
+                await LoadPresets();
+
+                var msg = $"가져오기 완료\n- 가져옴: {imported}\n- 건너뜀: {skipped}";
+                if (errors.Count > 0)
+                {
+                    msg += "\n\n오류:\n" + string.Join("\n", errors.Take(10)) + (errors.Count > 10 ? "\n..." : string.Empty);
+                }
+                MessageBox.Show(this, msg, "Import", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"가져오기 실패: {ex.Message}", "Import Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
         
         private void InitializeForm()
@@ -312,6 +397,7 @@ namespace MonitorPresetManager
             _hotkeyManager?.Dispose();
             _trayManager?.Dispose();
             _hotkeyMessageWindow?.Dispose(); // Dispose the message-only window
+            _activationWindow?.Dispose();
         }
 
         /// <summary>
@@ -332,9 +418,6 @@ namespace MonitorPresetManager
         {
             this.Hide();
             this.ShowInTaskbar = false;
-            _trayManager.ShowNotification("Monitor Preset Manager", 
-                "Application minimized to tray. Double-click the tray icon to restore.", 
-                ToolTipIcon.Info);
         }
 
         /// <summary>
@@ -342,11 +425,22 @@ namespace MonitorPresetManager
         /// </summary>
         private void RestoreFromTray()
         {
-            this.Show();
-            this.ShowInTaskbar = true;
-            this.WindowState = FormWindowState.Normal;
-            this.BringToFront();
-            this.Activate();
+            try
+            {
+                this.ShowInTaskbar = true;
+                if (!this.Visible)
+                {
+                    this.Show();
+                }
+                if (this.WindowState == FormWindowState.Minimized)
+                {
+                    NativeMethods.ShowWindow(this.Handle, NativeMethods.SW_RESTORE);
+                }
+                NativeMethods.AllowSetForegroundWindow(-1); // ASFW_ANY
+                NativeMethods.SetForegroundWindow(this.Handle);
+                this.Activate();
+            }
+            catch { /* best-effort */ }
         }
 
         #region Tray Manager Event Handlers
@@ -725,19 +819,16 @@ namespace MonitorPresetManager
         }
 
         /// <summary>
-        /// Override WndProc to handle custom messages for showing window from tray
+        /// Override WndProc to handle optional legacy messages
         /// </summary>
         protected override void WndProc(ref Message m)
         {
             const int WM_USER = 0x0400;
-            
             if (m.Msg == WM_USER + 1)
             {
-                // Custom message to show window from another instance
                 RestoreFromTray();
                 return;
             }
-            
             base.WndProc(ref m);
         }
 

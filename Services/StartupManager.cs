@@ -1,5 +1,6 @@
 using Microsoft.Win32;
 using System.Reflection;
+using System.Windows.Forms;
 using MonitorPresetManager.Models;
 
 namespace MonitorPresetManager.Services
@@ -20,8 +21,8 @@ namespace MonitorPresetManager.Services
         /// </summary>
         public StartupManager()
         {
-            // Get the current executable path
-            _applicationPath = Assembly.GetExecutingAssembly().Location;
+            // Use the actual executable path for startup registration
+            _applicationPath = Application.ExecutablePath;
             _applicationName = ApplicationName;
             
             // If running from dotnet, get the actual executable path
@@ -72,11 +73,8 @@ namespace MonitorPresetManager.Services
         {
             try
             {
-                using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, true);
-                if (key == null)
-                {
-                    return false;
-                }
+                using var key = Registry.CurrentUser.CreateSubKey(RegistryKeyPath, true);
+                if (key == null) return false;
 
                 var commandLine = BuildCommandLine(startMinimized);
                 key.SetValue(_applicationName, commandLine);

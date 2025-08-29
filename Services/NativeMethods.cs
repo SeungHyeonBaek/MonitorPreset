@@ -43,6 +43,27 @@ namespace MonitorPresetManager.Services
         [DllImport("user32.dll")]
         internal static extern int ChangeDisplaySettings(IntPtr lpDevMode, uint dwFlags);
 
+        [DllImport("user32.dll")]
+        internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        internal static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        internal static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        internal static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    internal static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    internal static extern uint RegisterWindowMessage(string lpString);
+
+    [DllImport("user32.dll")]
+    internal static extern bool AllowSetForegroundWindow(int dwProcessId);
+
         #endregion
 
         #region Win32 Structures
@@ -108,6 +129,10 @@ namespace MonitorPresetManager.Services
         internal const int CDS_TEST = 0x02;
         internal const int CDS_NORESET = 0x10000000;
         internal const int CDS_SET_PRIMARY = 0x00000010;
+
+        internal const int SW_RESTORE = 9;
+
+    internal static readonly IntPtr HWND_BROADCAST = new IntPtr(0xFFFF);
 
         internal const uint SPI_SETDESKWALLPAPER = 0x0014;
         internal const uint SPIF_UPDATEINIFILE = 0x01;

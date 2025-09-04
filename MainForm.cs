@@ -104,7 +104,12 @@ namespace MonitorPresetManager
             
             // Help menu items
             var aboutMenuItem = new ToolStripMenuItem("About");
-            aboutMenuItem.Click += (s, e) => MessageBox.Show("Monitor Preset Manager v1.1\n\nMulti-monitor configuration management tool", "About", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        aboutMenuItem.Click += (s, e) => 
+            {
+                var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+                var versionString = version != null ? $"v{version.Major}.{version.Minor}" : "v1.2";
+                MessageBox.Show($"Monitor Preset Manager {versionString}\n\nMulti-monitor configuration management tool", "About", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
             helpMenu.DropDownItems.Add(aboutMenuItem);
             
             menuStrip.Items.Add(fileMenu);

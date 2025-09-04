@@ -5,9 +5,14 @@ namespace MonitorPresetManager.Models
     /// </summary>
     public class MonitorInfo
     {
-        /// <summary>Device name (e.g., \\.\DISPLAY1)</summary>
+        /// <summary>Device name (e.g., \\.\\DISPLAY1)</summary>
         public string DeviceName { get; set; } = string.Empty;
-        
+
+        /// <summary>
+        /// Persistent and unique identifier for the monitor hardware.
+        /// </summary>
+        public string PersistentId { get; set; } = string.Empty;
+
         /// <summary>Resolution width</summary>
         public int Width { get; set; }
         
@@ -32,7 +37,7 @@ namespace MonitorPresetManager.Models
         /// <returns>Monitor information summary</returns>
         public override string ToString()
         {
-            return $"{DeviceName}: {Width}x{Height} at ({PositionX},{PositionY}) {(IsPrimary ? "[Primary]" : "")}";
+            return $"{DeviceName} ({PersistentId}): {Width}x{Height} at ({PositionX},{PositionY}) {(IsPrimary ? "[Primary]" : "")}";
         }
         
         /// <summary>
@@ -44,7 +49,8 @@ namespace MonitorPresetManager.Models
         {
             if (obj is not MonitorInfo other) return false;
             
-            return DeviceName == other.DeviceName &&
+            return PersistentId == other.PersistentId &&
+                   DeviceName == other.DeviceName &&
                    Width == other.Width &&
                    Height == other.Height &&
                    PositionX == other.PositionX &&
@@ -59,7 +65,7 @@ namespace MonitorPresetManager.Models
         /// <returns>Hash code</returns>
         public override int GetHashCode()
         {
-            return HashCode.Combine(DeviceName, Width, Height, PositionX, PositionY, IsPrimary, Orientation);
+            return HashCode.Combine(PersistentId, DeviceName, Width, Height, PositionX, PositionY, IsPrimary, Orientation);
         }
     }
 }

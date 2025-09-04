@@ -85,6 +85,7 @@ namespace MonitorPresetManager.Models
                 clonedMonitors.Add(new MonitorInfo
                 {
                     DeviceName = monitor.DeviceName,
+                    PersistentId = monitor.PersistentId,
                     Width = monitor.Width,
                     Height = monitor.Height,
                     PositionX = monitor.PositionX,

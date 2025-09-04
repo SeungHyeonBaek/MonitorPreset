@@ -1,8 +1,5 @@
-
-
 using MonitorPresetManager.Models;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -96,17 +93,9 @@ namespace MonitorPresetManager.Services
                     return null;
                 }
 
-                var monitorDevice = new DISPLAY_DEVICE();
-                monitorDevice.cb = Marshal.SizeOf(monitorDevice);
-                if (!EnumDisplayDevices(displayDevice.DeviceName, 0, ref monitorDevice, 0))
-                {
-                    _logger.LogWarning($"Could not find monitor device for adapter {displayDevice.DeviceName}.");
-                }
-
                 return new MonitorInfo
                 {
                     DeviceName = displayDevice.DeviceName,
-                    PersistentId = monitorDevice.DeviceID, 
                     Width = devMode.dmPelsWidth,
                     Height = devMode.dmPelsHeight,
                     PositionX = devMode.dmPositionX,
@@ -115,9 +104,8 @@ namespace MonitorPresetManager.Services
                     Orientation = ConvertToDisplayOrientation(devMode.dmDisplayOrientation)
                 };
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                _logger.LogError($"Error getting monitor info for {displayDevice.DeviceName}.", ex);
                 return null;
             }
         }
@@ -160,102 +148,79 @@ namespace MonitorPresetManager.Services
             }
 
             var currentConfig = GetCurrentMonitorConfiguration();
-            var currentConfigMap = currentConfig.ToDictionary(m => m.PersistentId);
-
-            var mappedMonitors = new List<(MonitorInfo presetMonitor, MonitorInfo targetMonitor)>();
-            foreach(var presetMonitor in preset.Monitors)
-            {
-                if (currentConfigMap.TryGetValue(presetMonitor.PersistentId, out var currentMonitor))
-                {
-                    var targetMonitor = new MonitorInfo
-                    {
-                        PersistentId = presetMonitor.PersistentId,
-                        Width = presetMonitor.Width,
-                        Height = presetMonitor.Height,
-                        PositionX = presetMonitor.PositionX,
-                        PositionY = presetMonitor.PositionY,
-                        IsPrimary = presetMonitor.IsPrimary,
-                        Orientation = presetMonitor.Orientation,
-                        DeviceName = currentMonitor.DeviceName
-                    };
-                    mappedMonitors.Add((presetMonitor, targetMonitor));
-                }
-                else
-                {
-                    throw new InvalidOperationException($"Monitor with ID '{presetMonitor.PersistentId}' from the preset is not connected to the system.");
-                }
-            }
-
-            var primaryMappedMonitorTuple = mappedMonitors.FirstOrDefault(m => m.targetMonitor.IsPrimary);
-            if (primaryMappedMonitorTuple.targetMonitor == null)
+            var primaryMonitor = preset.Monitors.FirstOrDefault(m => m.IsPrimary);
+            if (primaryMonitor == null)
             {
                 throw new InvalidOperationException("Preset does not have a primary monitor.");
             }
-            var primaryMappedMonitor = primaryMappedMonitorTuple.targetMonitor;
 
             try
             {
-                foreach (var (_, targetMonitor) in mappedMonitors.Where(m => !m.targetMonitor.IsPrimary))
+                // First, disable all monitors that will be non-primary
+                foreach (var monitorConfig in preset.Monitors.Where(m => !m.IsPrimary))
                 {
                     var devMode = new DEVMODE();
                     devMode.dmSize = (short)Marshal.SizeOf(devMode);
-                    if (EnumDisplaySettings(targetMonitor.DeviceName, ENUM_CURRENT_SETTINGS, ref devMode))
+                    if (EnumDisplaySettings(monitorConfig.DeviceName, ENUM_CURRENT_SETTINGS, ref devMode))
                     {
                         devMode.dmPelsWidth = 0;
                         devMode.dmPelsHeight = 0;
                         devMode.dmFields = 0x00080000 | 0x00100000; // DM_PELSWIDTH | DM_PELSHEIGHT
-                        _logger.LogInfo($"Disabling non-primary monitor {targetMonitor.DeviceName}.");
-                        ChangeDisplaySettingsEx(targetMonitor.DeviceName, ref devMode, IntPtr.Zero, (uint)(ChangeDisplaySettingsFlags.CDS_UPDATEREGISTRY | ChangeDisplaySettingsFlags.CDS_NORESET), IntPtr.Zero);
+                        _logger.LogInfo($"Disabling non-primary monitor {monitorConfig.DeviceName}.");
+                        ChangeDisplaySettingsEx(monitorConfig.DeviceName, ref devMode, IntPtr.Zero, (uint)(ChangeDisplaySettingsFlags.CDS_UPDATEREGISTRY | ChangeDisplaySettingsFlags.CDS_NORESET), IntPtr.Zero);
                     }
                 }
 
+                // Set the new primary monitor
                 var primaryDevMode = new DEVMODE();
                 primaryDevMode.dmSize = (short)Marshal.SizeOf(primaryDevMode);
-                if (!EnumDisplaySettings(primaryMappedMonitor.DeviceName, ENUM_CURRENT_SETTINGS, ref primaryDevMode))
+                if (!EnumDisplaySettings(primaryMonitor.DeviceName, ENUM_CURRENT_SETTINGS, ref primaryDevMode))
                 {
-                    throw new InvalidOperationException($"Failed to get current settings for primary monitor {primaryMappedMonitor.DeviceName}");
+                    throw new InvalidOperationException($"Failed to get current settings for primary monitor {primaryMonitor.DeviceName}");
                 }
 
-                primaryDevMode.dmPelsWidth = primaryMappedMonitor.Width;
-                primaryDevMode.dmPelsHeight = primaryMappedMonitor.Height;
+                primaryDevMode.dmPelsWidth = primaryMonitor.Width;
+                primaryDevMode.dmPelsHeight = primaryMonitor.Height;
                 primaryDevMode.dmPositionX = 0;
                 primaryDevMode.dmPositionY = 0;
-                primaryDevMode.dmDisplayOrientation = ConvertFromDisplayOrientation(primaryMappedMonitor.Orientation);
+                primaryDevMode.dmDisplayOrientation = ConvertFromDisplayOrientation(primaryMonitor.Orientation);
                 primaryDevMode.dmFields = 0x00080000 | 0x00100000 | 0x00000020 | 0x00000080; // DM_PELSWIDTH | DM_PELSHEIGHT | DM_POSITION | DM_DISPLAYORIENTATION
                 
-                _logger.LogInfo($"Setting primary display settings for {primaryMappedMonitor.DeviceName}.");
-                int primaryApplyResult = ChangeDisplaySettingsEx(primaryMappedMonitor.DeviceName, ref primaryDevMode, IntPtr.Zero, (uint)(ChangeDisplaySettingsFlags.CDS_SET_PRIMARY | ChangeDisplaySettingsFlags.CDS_UPDATEREGISTRY | ChangeDisplaySettingsFlags.CDS_NORESET), IntPtr.Zero);
+                _logger.LogInfo($"Setting primary display settings for {primaryMonitor.DeviceName}.");
+                int primaryApplyResult = ChangeDisplaySettingsEx(primaryMonitor.DeviceName, ref primaryDevMode, IntPtr.Zero, (uint)(ChangeDisplaySettingsFlags.CDS_SET_PRIMARY | ChangeDisplaySettingsFlags.CDS_UPDATEREGISTRY | ChangeDisplaySettingsFlags.CDS_NORESET), IntPtr.Zero);
                 if (primaryApplyResult != (int)DISP_CHANGE.SUCCESSFUL)
                 {
                     string errorMsg = GetDisplayChangeErrorMessage(primaryApplyResult);
-                    throw new InvalidOperationException($"Failed to set primary monitor {primaryMappedMonitor.DeviceName}: {errorMsg}");
+                    throw new InvalidOperationException($"Failed to set primary monitor {primaryMonitor.DeviceName}: {errorMsg}");
                 }
 
-                int originalPrimaryX = primaryMappedMonitor.PositionX;
-                int originalPrimaryY = primaryMappedMonitor.PositionY;
-                foreach (var (_, targetMonitor) in mappedMonitors.Where(m => !m.targetMonitor.IsPrimary))
+                // Enable and configure non-primary monitors
+                int originalPrimaryX = primaryMonitor.PositionX;
+                int originalPrimaryY = primaryMonitor.PositionY;
+                foreach (var monitorConfig in preset.Monitors.Where(m => !m.IsPrimary))
                 {
                     var devMode = new DEVMODE();
                     devMode.dmSize = (short)Marshal.SizeOf(devMode);
-                    if (EnumDisplaySettings(targetMonitor.DeviceName, ENUM_CURRENT_SETTINGS, ref devMode))
+                    if (EnumDisplaySettings(monitorConfig.DeviceName, ENUM_CURRENT_SETTINGS, ref devMode))
                     {
-                        devMode.dmPelsWidth = targetMonitor.Width;
-                        devMode.dmPelsHeight = targetMonitor.Height;
-                        devMode.dmPositionX = targetMonitor.PositionX - originalPrimaryX;
-                        devMode.dmPositionY = targetMonitor.PositionY - originalPrimaryY;
-                        devMode.dmDisplayOrientation = ConvertFromDisplayOrientation(targetMonitor.Orientation);
+                        devMode.dmPelsWidth = monitorConfig.Width;
+                        devMode.dmPelsHeight = monitorConfig.Height;
+                        devMode.dmPositionX = monitorConfig.PositionX - originalPrimaryX;
+                        devMode.dmPositionY = monitorConfig.PositionY - originalPrimaryY;
+                        devMode.dmDisplayOrientation = ConvertFromDisplayOrientation(monitorConfig.Orientation);
                         devMode.dmFields = 0x00080000 | 0x00100000 | 0x00000020 | 0x00000080; // DM_PELSWIDTH | DM_PELSHEIGHT | DM_POSITION | DM_DISPLAYORIENTATION
                         
-                        _logger.LogInfo($"Enabling non-primary display settings for {targetMonitor.DeviceName}.");
-                        int applyResult = ChangeDisplaySettingsEx(targetMonitor.DeviceName, ref devMode, IntPtr.Zero, (uint)(ChangeDisplaySettingsFlags.CDS_UPDATEREGISTRY | ChangeDisplaySettingsFlags.CDS_NORESET), IntPtr.Zero);
+                        _logger.LogInfo($"Enabling non-primary display settings for {monitorConfig.DeviceName}.");
+                        int applyResult = ChangeDisplaySettingsEx(monitorConfig.DeviceName, ref devMode, IntPtr.Zero, (uint)(ChangeDisplaySettingsFlags.CDS_UPDATEREGISTRY | ChangeDisplaySettingsFlags.CDS_NORESET), IntPtr.Zero);
                         if (applyResult != (int)DISP_CHANGE.SUCCESSFUL)
                         {
                             string errorMsg = GetDisplayChangeErrorMessage(applyResult);
-                            throw new InvalidOperationException($"Display settings apply failed for {targetMonitor.DeviceName}: {errorMsg}");
+                            throw new InvalidOperationException($"Display settings apply failed for {monitorConfig.DeviceName}: {errorMsg}");
                         }
                     }
                 }
 
+                // Apply all changes
                 _logger.LogInfo("Applying all display changes.");
                 int finalResult = ChangeDisplaySettings(IntPtr.Zero, 0);
                 if (finalResult != (int)DISP_CHANGE.SUCCESSFUL)
@@ -309,6 +274,7 @@ namespace MonitorPresetManager.Services
 
                 _logger.LogInfo($"Testing display settings for {monitorConfig.DeviceName}. Width: {devMode.dmPelsWidth}, Height: {devMode.dmPelsHeight}, PosX: {devMode.dmPositionX}, PosY: {devMode.dmPositionY}, Orientation: {devMode.dmDisplayOrientation}");
                 int result = ChangeDisplaySettingsEx(monitorConfig.DeviceName, ref devMode, IntPtr.Zero, (uint)ChangeDisplaySettingsFlags.CDS_TEST, IntPtr.Zero);
+                _logger.LogInfo($"CDS_TEST result for {monitorConfig.DeviceName}: {result} ({GetDisplayChangeErrorMessage(result)})");
                 if (result != (int)DISP_CHANGE.SUCCESSFUL)
                 {
                     string errorMsg = GetDisplayChangeErrorMessage(result);
@@ -317,6 +283,7 @@ namespace MonitorPresetManager.Services
 
                 _logger.LogInfo($"Applying display settings for {monitorConfig.DeviceName}.");
                 result = ChangeDisplaySettingsEx(monitorConfig.DeviceName, ref devMode, IntPtr.Zero, (uint)ChangeDisplaySettingsFlags.CDS_UPDATEREGISTRY, IntPtr.Zero);
+                _logger.LogInfo($"CDS_UPDATEREGISTRY result for {monitorConfig.DeviceName}: {result} ({GetDisplayChangeErrorMessage(result)})");
                 if (result != (int)DISP_CHANGE.SUCCESSFUL)
                 {
                     string errorMsg = GetDisplayChangeErrorMessage(result);
@@ -341,6 +308,7 @@ namespace MonitorPresetManager.Services
                 }
                 catch
                 {
+                    // Ignore individual rollback failures
                 }
             }
         }
@@ -360,18 +328,18 @@ namespace MonitorPresetManager.Services
             try
             {
                 var currentMonitors = GetCurrentMonitorConfiguration();
-                var currentPersistentIds = currentMonitors.Select(m => m.PersistentId).ToHashSet();
+                var currentDeviceNames = currentMonitors.Select(m => m.DeviceName).ToHashSet();
 
                 foreach (var presetMonitor in preset.Monitors)
                 {
-                    if (string.IsNullOrWhiteSpace(presetMonitor.PersistentId))
+                    if (string.IsNullOrWhiteSpace(presetMonitor.DeviceName))
                     {
-                        return (false, $"Monitor configuration for '{presetMonitor.DeviceName}' is missing a persistent ID.");
+                        return (false, "Monitor configuration contains empty device name");
                     }
 
-                    if (!currentPersistentIds.Contains(presetMonitor.PersistentId))
+                    if (!currentDeviceNames.Contains(presetMonitor.DeviceName))
                     {
-                        return (false, $"Monitor with ID '{presetMonitor.PersistentId}' not found in current system");
+                        return (false, $"Monitor '{presetMonitor.DeviceName}' not found in current system");
                     }
 
                     if (presetMonitor.Width <= 0 || presetMonitor.Height <= 0)
@@ -398,6 +366,8 @@ namespace MonitorPresetManager.Services
                 return (false, $"Validation failed: {ex.Message}");
             }
         }
+
+        
 
         private void SetPrimaryMonitor(string deviceName)
         {
@@ -431,6 +401,7 @@ namespace MonitorPresetManager.Services
             }
             catch
             {
+                // Ignore errors
             }
         }
 
@@ -444,9 +415,8 @@ namespace MonitorPresetManager.Services
             }
             catch
             {
+                // Ignore refresh errors
             }
         }
     }
 }
-
-
